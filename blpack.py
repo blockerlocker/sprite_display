@@ -1,27 +1,33 @@
-import os, json, shutil, urllib.request, zipfile, colorsys
+import os, json, shutil, urllib.request, zipfile
 from pathlib import Path
 from PIL import Image
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 def get_version(mcversion):
-    version_manifest = json.load(urllib.request.urlopen("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"))
-    if mcversion == "latest-release":
-        return version_manifest["latest"]["release"]
-    elif mcversion == "latest-snapshot":
-        return version_manifest["latest"]["snapshot"]
-    else:
+    if not mcversion in ("latest-release", "latest-snapshot"):
         return mcversion
+    else:
+        version_manifest = json.load(urllib.request.urlopen("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"))
+        if mcversion == "latest-release":
+            return version_manifest["latest"]["release"]
+        elif mcversion == "latest-snapshot":
+            return version_manifest["latest"]["snapshot"]        
+
+def get_version_data(mcversion):
+    version_data_response = urllib.request.urlopen(f"https://raw.githubusercontent.com/misode/mcmeta/summary/versions/data.json")
+    all_version_data = json.load(version_data_response)
+    return next((version for version in all_version_data if version["id"] == mcversion),None)
 
 def get_registry_data(mcversion,registry):
     registry_response = urllib.request.urlopen(f"https://raw.githubusercontent.com/misode/mcmeta/{mcversion}-registries/{registry}/data.json")
     return(json.load(registry_response))
 
-def unpack_client(mcversion,temp_dir,extract_paths):
-    if not Path(temp_dir).is_dir():
+def unpack_client(mcversion,directory,extract_paths):
+    if not Path(directory).is_dir():
         print("--Setting up temporary directory")
-        shutil.rmtree(temp_dir, ignore_errors=True)
-        Path(temp_dir).mkdir(parents=True, exist_ok=True)
+        shutil.rmtree(directory, ignore_errors=True)
+        Path(directory).mkdir(parents=True, exist_ok=True)
 
     print("--Grabbing version manifest")
     version_manifest = json.load(urllib.request.urlopen("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"))
@@ -32,21 +38,62 @@ def unpack_client(mcversion,temp_dir,extract_paths):
         print(f"--{mcversion} does not exist in version manifest!")
         return(None)
 
-    print(f"--Downloading client.jar for {mcversion}")
-    version_info = json.load(urllib.request.urlopen(version["url"]))
-    version_server = version_info["downloads"]["client"]["url"]
-    urllib.request.urlretrieve(version_server,f"{temp_dir}/client.jar")
+    if Path(f"{directory}/{mcversion}.jar").is_file():
+        print(f"--Found {mcversion}.jar")
+    else:
+        print(f"--Downloading {mcversion}.jar")
+        version_info = json.load(urllib.request.urlopen(version["url"]))
+        version_server = version_info["downloads"]["client"]["url"]
+        urllib.request.urlretrieve(version_server,f"{directory}/{mcversion}.jar")
+        json_to_file(version_info,directory,mcversion)
 
-    print("--Unpacking from client.jar")
-    with zipfile.ZipFile(f"{temp_dir}/client.jar","r") as jar:
-        files_to_extract = [item for item in jar.namelist() if item.startswith(extract_paths)]
-        jar.extractall(path=temp_dir,members=files_to_extract)
+    print(f"--Unpacking from {mcversion}.jar")
+    with zipfile.ZipFile(f"{directory}/{mcversion}.jar","r") as jar:
+        files_to_extract = [item for item in jar.namelist() if item.startswith(extract_paths) and not extract_paths == ""]
+        jar.extractall(path=directory,members=files_to_extract)
 
-def remove_path(path):
-    if Path(path).exists():
-        if Path(path).is_dir(): shutil.rmtree(path,ignore_errors=True)
-        elif Path(path).is_file(): os.remove(path)
-        print(f"--Removed {path}")
+def import_config_settings(module):
+    if not Path("blpack_config.json").is_file(): return None
+
+    with open("blpack_config.json") as config_json:
+        config = json.load(config_json)
+
+    if not module in config: return None
+    
+    return config[module]
+
+def import_config_version():
+    if not Path("blpack_config.json").is_file(): return get_version("latest-snapshot")
+
+    with open("blpack_config.json") as config_json:
+        config = json.load(config_json)
+
+    if not "version" in config: return get_version("latest-snapshot")
+    
+    return get_version(config["version"])
+
+def import_config_modules():
+    config_modules = []
+    if not Path("blpack_config.json").is_file(): return config_modules
+
+    with open("blpack_config.json") as config_json:
+        config = json.load(config_json)
+
+    for module in config:
+        if module[:5] == "data/" or module[:7] == "assets/":
+            config_modules.append(module)
+            
+    return config_modules
+
+def remove_paths(path_list):
+    if isinstance(path_list,str):
+        path_list = [path_list]
+
+    for path in path_list:
+        if Path(path).exists():
+            if Path(path).is_dir(): shutil.rmtree(path,ignore_errors=True)
+            elif Path(path).is_file(): os.remove(path)
+            print(f"--Removed {path}")
 
 def string_to_file(string,path,file_name):
     Path(path).mkdir(parents=True, exist_ok=True)
@@ -97,6 +144,7 @@ def tag_append(path,tag,append_value):
             new_tag = json.load(tag_json)
             if not append_value in new_tag["values"]:
                 new_tag["values"].append(append_value)
+                new_tag["values"].sort()
                 with open(file_path, "w") as new_tag_json:
                     json.dump(new_tag,new_tag_json,indent=4)
     else:

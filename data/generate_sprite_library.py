@@ -2,35 +2,28 @@ import os, urllib.request, json, sys, shutil
 from pathlib import Path
 from PIL import Image
 
+os.chdir(Path(__file__).resolve().parent.parent)
+sys.path.append(str(Path.cwd()))
 
-if len(sys.argv) > 1:
-    MCVERSION = sys.argv[1]
-else:
-#### SET MINECRAFT VERSION MANUALLY HERE ####
-    MCVERSION = "latest-snapshot"
-
-
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
-
-if not Path.cwd().name == "data":
-    print(f"Working directory not named 'data'! Instead got '{Path.cwd().name}'. bldp generation scripts must be stored within the 'data' folder of your pack to generate correctly!")
+if not Path(Path(__file__).resolve().parent).name == "data":
+    print(f"!-This module must be stored within the 'data' folder of your pack to generate correctly!")
     input("Press Enter to exit program...")
     sys.exit()
 
-if not Path("bldp.py").is_file():
-    with open("bldp.py", "w", encoding="utf-8") as bldp_main:
-        bldp_main.write(urllib.request.urlopen("https://raw.githubusercontent.com/blockerlocker/bldp/main/data/bldp.py").read().decode('utf-8'))
+if not Path("blpack.py").is_file():
+    with open("blpack.py", "w", encoding="utf-8") as blpack_main:
+        blpack_main.write(urllib.request.urlopen("https://raw.githubusercontent.com/blockerlocker/blpack/main/blpack.py").read().decode('utf-8'))
 
-import bldp
+import blpack
 
-MCVERSION = bldp.get_version(MCVERSION)
+MCVERSION = blpack.import_config_version()
 
 print("--Setting up temporary directory")
 TEMP_DIR = "sprite_display_datagen_temp_dir"
 shutil.rmtree(TEMP_DIR, ignore_errors=True)
 Path(TEMP_DIR).mkdir(parents=True, exist_ok=True)
 
-bldp.unpack_client(MCVERSION,TEMP_DIR,("assets/minecraft/atlases", "assets/minecraft/textures"))
+blpack.unpack_client(MCVERSION,TEMP_DIR,("assets/minecraft/atlases", "assets/minecraft/textures"))
 
 print("--Getting atlas paths")
 atlas_dir = f"{TEMP_DIR}/assets/minecraft/atlases/"
@@ -92,9 +85,9 @@ for atlas_source in all_atlas_sources:
         source = str(atlas_source["resource"]).replace("minecraft:","")
         process_texture(Path(f"{texture_dir}/{source}.png"),f"{texture_dir}")
 
-bldp.string_to_file(f"data merge storage sprite_display:sprite_data {sprite_data}","sprite_display/function","load.mcfunction")
-bldp.string_to_file(f"dialog show @s {{type:notice,title:\"Sprite Display Browser\",body:{{type:plain_message,width:500,contents:{browse_sprites}}}}}","sprite_display/function","browse.mcfunction")
-bldp.string_to_file(f"dialog show @s {{type:notice,title:\"Sprite Display Browser\",body:{{type:plain_message,width:500,contents:{copy_to_clipboard}}}}}","sprite_display/function","copy_to_clipboard.mcfunction")
-bldp.string_to_file(f"summon text_display ~ ~ ~ {{Tags:[sprite_display],background:0,shadow:false,line_width:640,data:{{sprite_size:[1,1]}},text:{browse_sprites}}}","sprite_display/function","debug_entity.mcfunction")
+blpack.string_to_file(f"data merge storage sprite_display:sprite_data {sprite_data}","data/sprite_display/function","load.mcfunction")
+blpack.string_to_file(f"dialog show @s {{type:notice,title:\"Sprite Display Browser\",body:{{type:plain_message,width:400,contents:{browse_sprites}}}}}","data/sprite_display/function","browse.mcfunction")
+blpack.string_to_file(f"dialog show @s {{type:notice,title:\"Sprite Display Browser\",body:{{type:plain_message,width:400,contents:{copy_to_clipboard}}}}}","data/sprite_display/function","copy_to_clipboard.mcfunction")
+blpack.string_to_file(f"summon text_display ~ ~ ~ {{Tags:[sprite_display],background:0,shadow:false,line_width:640,data:{{sprite_size:[1,1]}},text:{browse_sprites}}}","data/sprite_display/function","debug_entity.mcfunction")
 
-bldp.remove_path(TEMP_DIR)
+blpack.remove_paths(TEMP_DIR)
